@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <!-- CSS linear-gradient(145deg,#c8ffa3,#91d36c): 145deg clockwise from up
+         gives direction (sin145, -cos145) = (0.5736, 0.8192), so the
+         objectBoundingBox endpoints are center +/- dir/2. -->
+    <linearGradient id="brandBg" x1="0.2132" y1="0.0904" x2="0.7868" y2="0.9096">
+      <stop offset="0" stop-color="#c8ffa3"/>
+      <stop offset="1" stop-color="#91d36c"/>
+    </linearGradient>
+  </defs>
+  <!-- Squared icon with transparency outside the rounded rect (tauri-ok). -->
+  <rect width="1024" height="1024" rx="220" fill="url(#brandBg)"/>
+  <!-- Lucide Layers3 (same as Layers), 24x24 grid scaled to ~60% (614px) and
+       centered: offset (1024-614.4)/2 = 204.8, scale 614.4/24 = 25.6.
+       stroke-width 2 in local units => ~51px visual, same 8.3% ratio as
+       in-app <Layers3 size={17}/> inside the 27px .brand-mark. -->
+  <g transform="translate(204.8 204.8) scale(25.6)" fill="none" stroke="#182217" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/>
+    <path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/>
+    <path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/>
+  </g>
+</svg>

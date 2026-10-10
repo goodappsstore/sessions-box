@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Find, resume, and understand your coding agent sessions. SessionsBox brings your local history, tool activity, and usage analytics into one desktop app.">
+  <meta name="theme-color" content="#f3f5f2">
+  <meta property="og:title" content="SessionsBox — Your coding sessions, in one place">
+  <meta property="og:description" content="Search your agent history, resume past work, and understand token costs and tool failures. Local-first.">
+  <meta property="og:type" content="website">
+  <title>SessionsBox — Your coding sessions, in one place</title>
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f3f5f2;
+      --panel: #fff;
+      --panel-soft: #fafbf9;
+      --ink: #202624;
+      --muted: #596260;
+      --line: #dce2d9;
+      --green: #a8d987;
+      --green-soft: #e8f1e2;
+      --green-ink: #355325;
+      --mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-padding-top: 2rem; }
+    body { margin: 0; background: var(--bg); color: var(--ink); line-height: 1.65; }
+    a { color: var(--green-ink); text-underline-offset: .22em; }
+    a:hover { text-decoration-thickness: 2px; }
+    a, button, summary { -webkit-tap-highlight-color: transparent; }
+    :focus-visible { outline: 3px solid #527b3b; outline-offset: 4px; }
+    img { display: block; max-width: 100%; height: auto; }
+    button { font: inherit; }
+    h1, h2, h3, p, figure { margin: 0; }
+    h1, h2, h3 { line-height: 1.15; }
+    h1 { max-width: 820px; font-size: clamp(2.5rem, 5.2vw, 4.5rem); font-weight: 700; letter-spacing: -.045em; }
+    h2 { font-size: clamp(1.8rem, 3vw, 2.5rem); letter-spacing: -.035em; }
+    h3 { font-size: 1.15rem; letter-spacing: -.02em; }
+    p { color: var(--muted); }
+    strong { color: var(--ink); }
+    .container { width: min(1160px, calc(100% - 3rem)); margin-inline: auto; }
+    .skip-link { position: absolute; left: 1rem; top: -6rem; z-index: 10; padding: .7rem 1rem; background: var(--panel); }
+    .skip-link:focus { top: 1rem; }
+    .site-header { border-bottom: 1px solid var(--line); background: var(--panel-soft); }
+    .header-inner { min-height: 84px; display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; }
+    .brand { display: inline-flex; align-items: center; gap: .65rem; font-weight: 750; font-size: 1.2rem; letter-spacing: -.04em; color: var(--ink); text-decoration: none; }
+    .brand img { width: 32px; height: 32px; }
+    .brand span span { color: var(--muted); }
+    nav { display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap; }
+    nav a { font-size: .875rem; color: var(--muted); text-decoration: none; }
+    nav a:hover { color: var(--ink); text-decoration: underline; }
+    .button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: .7rem 1.1rem; border: 1px solid #91ba74; border-radius: 7px; background: var(--green); color: #20301b; font-size: .9375rem; font-weight: 650; text-decoration: none; text-align: center; line-height: 1.4; }
+    .button:hover { background: #9ece7d; text-decoration: none; }
+    .button.secondary { background: var(--panel); border-color: var(--line); color: var(--ink); }
+    .button.secondary:hover { background: var(--green-soft); }
+    nav .button { padding: .55rem .9rem; min-height: 40px; font-size: .875rem; color: #20301b; }
+    .eyebrow { font: 500 .8125rem/1.6 var(--mono); color: var(--green-ink); letter-spacing: .05em; }
+    .hero { padding: 4.5rem 0 2.75rem; }
+    .hero .eyebrow { margin-bottom: 1.25rem; }
+    .hero h1 span { display: block; color: var(--green-ink); }
+    .hero-copy { max-width: 690px; margin-top: 1.5rem; font-size: 1.125rem; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.75rem; }
+    .hero-note { margin-top: .9rem; font-size: .875rem; }
+    .hero-meta { display: flex; flex-wrap: wrap; gap: .75rem 1.75rem; margin-top: 2.25rem; padding-top: 1.25rem; border-top: 1px solid var(--line); font: .875rem/1.6 var(--mono); color: var(--muted); }
+    .screenshot { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel); }
+    .screenshot img { width: 100%; }
+    .screenshot a { display: block; }
+    figcaption { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem 1.5rem; padding: .85rem 1rem; border-top: 1px solid var(--line); background: var(--panel-soft); color: var(--muted); font-size: .875rem; }
+    figcaption a { display: inline !important; white-space: nowrap; }
+    .agents { padding: 1.75rem 0 0; }
+    .agents p { font-size: .875rem; }
+    .agent-list { display: flex; flex-wrap: wrap; gap: .55rem; list-style: none; padding: 0; margin: .75rem 0 0; }
+    .agent-list li { padding: .3rem .7rem; background: var(--panel-soft); border: 1px solid var(--line); border-radius: 5px; font: .8125rem/1.5 var(--mono); }
+    .section { padding: 4.5rem 0; }
+    .section-heading { max-width: 720px; margin-bottom: 2rem; }
+    .section-heading .eyebrow { margin-bottom: .65rem; }
+    .section-heading > p:last-child { margin-top: .9rem; }
+    .problem-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.75rem; }
+    .problem { border-top: 2px solid #b8cfaa; padding-top: 1.25rem; }
+    .problem .number { display: block; margin-bottom: 1.1rem; font: .875rem/1 var(--mono); color: var(--green-ink); }
+    .problem p { margin-top: .85rem; }
+    .feature-strip { display: flex; flex-wrap: wrap; gap: .5rem 1.75rem; padding: 1rem 1.25rem; margin-top: 2rem; border: 1px solid var(--line); background: var(--panel-soft); border-radius: 7px; font-size: .875rem; color: var(--muted); }
+    .analytics { border-block: 1px solid var(--line); background: var(--panel-soft); }
+    .view-controls { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.2rem; }
+    .view-controls[hidden], [hidden] { display: none !important; }
+    .view-button { min-height: 44px; padding: .65rem 1rem; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--muted); cursor: pointer; font-size: .9375rem; }
+    .view-button:hover { color: var(--ink); border-color: #9bbd81; }
+    .view-button[aria-pressed="true"] { background: var(--green-soft); border-color: #9bbd81; color: var(--green-ink); font-weight: 600; }
+    .analytics figure + figure { margin-top: 1.5rem; }
+    .analytics-copy { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 1.75rem; }
+    .analytics-copy p { margin-top: .65rem; }
+    .estimate-note { margin-top: 1.25rem; font-size: .875rem; }
+    .downloads { padding-top: 0; }
+    .download-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+    .download-card { display: flex; flex-direction: column; gap: .75rem; padding: 1.5rem; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+    .download-card .platform { font: .8125rem var(--mono); color: var(--muted); margin-bottom: .25rem; }
+    .download-card h3 { font-size: 1.4rem; }
+    .download-card p { font-size: .875rem; margin-bottom: .4rem; }
+    .download-card .button { width: 100%; }
+    .download-card .alt-download { text-align: center; font-size: .875rem; }
+    .download-option + .download-option { margin-top: .5rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+    .download-option h4 { font: 500 .8125rem/1.5 var(--mono); color: var(--muted); margin: 0 0 .6rem; }
+    .format-links { display: flex; justify-content: center; gap: 1rem; margin-top: .55rem; font-size: .875rem; }
+    .install-notes { margin-top: 1.5rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-soft); padding: 1.5rem; }
+    .install-notes > p { margin-top: .75rem; }
+    .install-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 1.5rem; }
+    .install-grid h4 { font-size: 1rem; margin: 0 0 .5rem; }
+    .install-grid p { font-size: .9375rem; }
+    .install-grid a { display: inline-block; margin-top: .6rem; font-size: .875rem; }
+    .linux-note { margin-top: 1.1rem; font-size: .875rem; }
+    code { font: .875em var(--mono); background: var(--green-soft); padding: .15em .35em; border-radius: 3px; overflow-wrap: anywhere; }
+    .faq { padding-top: 0; }
+    .faq-layout { display: grid; grid-template-columns: .7fr 1.3fr; gap: 3rem; }
+    details { padding: 1rem 0; border-bottom: 1px solid var(--line); }
+    details:first-child { border-top: 1px solid var(--line); }
+    summary { font-weight: 600; cursor: pointer; padding-right: .5rem; }
+    details p { padding-top: .75rem; }
+    footer { border-top: 1px solid var(--line); background: var(--panel-soft); padding: 1.5rem 0; }
+    .footer-inner { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; }
+    .footer-inner p, .footer-inner a:not(.brand) { font-size: .875rem; }
+    .footer-links { display: flex; flex-wrap: wrap; gap: 1.25rem; }
+    @media (max-width: 900px) {
+      .problem-grid { gap: 1.25rem; }
+      .faq-layout { gap: 2rem; }
+      .download-card { padding: 1.1rem; }
+      .hero { padding-top: 3.5rem; }
+    }
+    @media (max-width: 680px) {
+      .container { width: calc(100% - 2rem); }
+      .header-inner { padding-block: 1rem; flex-wrap: wrap; gap: 1rem; }
+      nav { gap: 1rem; width: 100%; }
+      nav .button { margin-left: auto; }
+      .hero { padding-top: 2.5rem; }
+      .hero-copy { font-size: 1rem; }
+      .section { padding-block: 3rem; }
+      .problem-grid, .analytics-copy, .download-grid, .install-grid, .faq-layout { grid-template-columns: 1fr; }
+      .problem-grid { gap: 1.75rem; }
+      .analytics-copy, .install-grid { gap: 1.5rem; }
+      .faq-layout { gap: 1.5rem; }
+      .downloads, .faq { padding-top: 0; }
+      .download-card { padding: 1.5rem; }
+      .section-heading { margin-bottom: 1.5rem; }
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      html { scroll-behavior: smooth; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="#" aria-label="SessionsBox home">
+        <img src="assets/logo.svg" width="32" height="32" alt="">
+        <span>Sessions<span>Box</span></span>
+      </a>
+      <nav aria-label="Main navigation">
+        <a href="#workflow">Features</a>
+        <a href="#analytics">Analytics</a>
+        <a class="button" href="#download">Download</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="container hero" aria-labelledby="hero-title">
+      <p class="eyebrow">A local-first home for coding agent sessions</p>
+      <h1 id="hero-title">Find the session.<span>Pick up where you left off.</span></h1>
+      <p class="hero-copy">That fix from last week. The prompt that worked. The command that kept failing. SessionsBox brings your coding agent history into one searchable desktop app, so you can get back to the work instead of digging through logs.</p>
+      <div class="hero-actions">
+        <a class="button" href="#download">Download SessionsBox</a>
+        <a class="button secondary" href="#library">See the app</a>
+      </div>
+      <p class="hero-note">Open the app and sync your local sessions to get started.</p>
+      <div class="hero-meta" aria-label="Product highlights">
+        <span>macOS / Windows / Linux</span>
+        <span>Your transcripts stay on your machine</span>
+        <span>Search · Resume · Analyze</span>
+      </div>
+    </section>
+
+    <div class="container" id="library">
+      <figure class="screenshot">
+        <a href="assets/sessions-homepage.png" target="_blank" rel="noopener" aria-label="Open the SessionsBox session library screenshot at full size">
+          <img src="assets/sessions-homepage.png" width="4080" height="2184" alt="SessionsBox in its light theme: agents and workspaces on the left, a searchable session list in the middle, and a transcript with tool activity and a Resume button on the right." fetchpriority="high">
+        </a>
+        <figcaption>
+          <span>One library for your agents, workspaces, and conversations.</span>
+          <a href="assets/sessions-homepage.png" target="_blank" rel="noopener">Open full-size screenshot</a>
+        </figcaption>
+      </figure>
+      <div class="agents">
+        <p>Bring together sessions from the tools you already use.</p>
+        <ul class="agent-list" aria-label="Supported coding agents">
+          <li>Codex</li><li>Claude Code</li><li>OpenCode</li><li>Pi</li><li>Command Code</li><li>Muse</li><li>Hermes Agent</li><li>Antigravity</li><li>Cline</li>
+        </ul>
+      </div>
+    </div>
+
+    <section class="container section" id="workflow" aria-labelledby="workflow-title">
+      <div class="section-heading">
+        <p class="eyebrow">Less log digging. More building.</p>
+        <h2 id="workflow-title">Your past work should be useful again.</h2>
+      </div>
+      <div class="problem-grid">
+        <article class="problem">
+          <span class="number" aria-hidden="true">01 / FIND</span>
+          <h3>“Which agent did I do that in?”</h3>
+          <p>Search across your saved sessions. Narrow by agent, workspace, date, model, branch, or tool. Read the conversation and its tool activity together, without opening a pile of JSONL files.</p>
+        </article>
+        <article class="problem">
+          <span class="number" aria-hidden="true">02 / CONTINUE</span>
+          <h3>“I need to pick that task back up.”</h3>
+          <p>Open a session and use Resume to return to its native agent CLI in your terminal. Review the command and working directory first, then continue with the original context.</p>
+        </article>
+        <article class="problem">
+          <span class="number" aria-hidden="true">03 / KEEP</span>
+          <h3>“That solution is worth saving.”</h3>
+          <p>Star useful sessions, add your own tags, and export full transcripts as Markdown or JSON. Keep a searchable record of what worked instead of solving the same problem twice.</p>
+        </article>
+      </div>
+      <div class="feature-strip">
+        <span>Reads local agent history</span>
+        <span>Leaves source files untouched</span>
+        <span>Incremental sync</span>
+        <span>SQLite backup &amp; restore</span>
+      </div>
+    </section>
+
+    <section class="section analytics" id="analytics" aria-labelledby="analytics-title">
+      <div class="container">
+        <div class="section-heading">
+          <p class="eyebrow">Understand what happened</p>
+          <h2 id="analytics-title">Where did the tokens go?<br>What kept breaking?</h2>
+          <p>Look across your sessions to spot expensive runs, cache usage, slow tools, and recurring failures. Filter reports by date, agent, workspace, and model.</p>
+        </div>
+        <div class="view-controls" role="group" aria-label="Choose an analytics screenshot" hidden>
+          <button class="view-button" type="button" data-view="cost-view" aria-controls="cost-view" aria-pressed="true">Tokens &amp; estimated cost</button>
+          <button class="view-button" type="button" data-view="tools-view" aria-controls="tools-view" aria-pressed="false">Tool failures &amp; execution</button>
+        </div>
+        <figure class="screenshot" id="cost-view">
+          <a href="assets/token-cost-tracking.png" target="_blank" rel="noopener" aria-label="Open the token and cost tracking screenshot at full size">
+            <img src="assets/token-cost-tracking.png" width="3580" height="1978" loading="lazy" decoding="async" alt="Token and Cost Tracking report showing estimated spend, input and output tokens, cache efficiency by agent, and cost per turn, hour, and day.">
+          </a>
+          <figcaption>
+            <span>Token usage, cache efficiency, and estimated costs in one view.</span>
+            <a href="assets/token-cost-tracking.png" target="_blank" rel="noopener">Open full-size screenshot</a>
+          </figcaption>
+        </figure>
+        <figure class="screenshot" id="tools-view">
+          <a href="assets/tool-failure-execution.png" target="_blank" rel="noopener" aria-label="Open the tool failures and execution screenshot at full size">
+            <img src="assets/tool-failure-execution.png" width="3578" height="2050" loading="lazy" decoding="async" alt="Tool Failure and Execution report showing invocation counts, failure rate, execution success rate, tool latency, and frequently failing commands with their error output.">
+          </a>
+          <figcaption>
+            <span>Inspect tool latency and the commands that repeatedly fail.</span>
+            <a href="assets/tool-failure-execution.png" target="_blank" rel="noopener">Open full-size screenshot</a>
+          </figcaption>
+        </figure>
+        <div class="analytics-copy">
+          <article>
+            <h3>Make usage easier to reason about.</h3>
+            <p>Compare models, agents, and workspaces. See input, output, and cached tokens alongside estimated spend, with pricing overrides for your own rates.</p>
+          </article>
+          <article>
+            <h3>Find the friction in your workflow.</h3>
+            <p>Review failure rates, tool timings, and repeated command errors. Go beyond “the agent got stuck” and see the activity behind the session.</p>
+          </article>
+        </div>
+        <p class="estimate-note">Costs are estimates, not provider bills. SessionsBox uses reported token usage when available and text estimates when it is missing.</p>
+      </div>
+    </section>
+
+    <section class="container section downloads" id="download" aria-labelledby="download-title">
+      <div class="section-heading">
+        <p class="eyebrow">Get SessionsBox</p>
+        <h2 id="download-title">Give your agent history a home.</h2>
+        <p>Download for your platform, open the app, and sync your local sessions.</p>
+      </div>
+      <!-- Mirrors ../serverbox/.github/workflows/release.yml, with the SessionsBox prefix.
+           Release version: 0.1.0. Update links together when publishing a new version. -->
+      <div class="download-grid">
+        <article class="download-card">
+          <span class="platform">01 / macOS</span>
+          <h3>Mac</h3>
+          <p>Choose the installer for your Mac’s processor.</p>
+          <div class="download-option">
+            <h4>Apple silicon / ARM64</h4>
+            <a class="button" href="binaries/SessionsBox-v0.1.0-darwin-aarch64-dmg.dmg" download>Apple silicon · DMG</a>
+          </div>
+          <div class="download-option">
+            <h4>Intel / x64</h4>
+            <a class="button secondary" href="binaries/SessionsBox-v0.1.0-darwin-x64-dmg.dmg" download>Intel Mac · DMG</a>
+          </div>
+        </article>
+        <article class="download-card">
+          <span class="platform">02 / Windows</span>
+          <h3>Windows</h3>
+          <p>Installers for Intel/AMD and ARM-based PCs.</p>
+          <div class="download-option">
+            <h4>Intel / AMD / x64</h4>
+            <a class="button" href="binaries/SessionsBox-v0.1.0-windows-x64-nsis-setup.exe" download>Windows x64 · EXE</a>
+            <div class="format-links"><a href="binaries/SessionsBox-v0.1.0-windows-x64-msi.msi" download>MSI installer · x64</a></div>
+          </div>
+          <div class="download-option">
+            <h4>ARM64</h4>
+            <a class="button secondary" href="binaries/SessionsBox-v0.1.0-windows-arm64-nsis-setup.exe" download>Windows ARM64 · EXE</a>
+            <div class="format-links"><a href="binaries/SessionsBox-v0.1.0-windows-arm64-msi.msi" download>MSI installer · ARM64</a></div>
+          </div>
+        </article>
+        <article class="download-card">
+          <span class="platform">03 / Linux</span>
+          <h3>Linux</h3>
+          <p>AppImage, Debian/Ubuntu, or RPM packages.</p>
+          <div class="download-option">
+            <h4>Intel / AMD / x64</h4>
+            <a class="button" href="binaries/SessionsBox-v0.1.0-linux-amd64-appimage.AppImage" download>Linux x64 · AppImage</a>
+            <div class="format-links">
+              <a href="binaries/SessionsBox-v0.1.0-linux-amd64-deb.deb" download>DEB · x64</a>
+              <a href="binaries/SessionsBox-v0.1.0-linux-x86_64-rpm.rpm" download>RPM · x64</a>
+            </div>
+          </div>
+          <div class="download-option">
+            <h4>ARM64</h4>
+            <a class="button secondary" href="binaries/SessionsBox-v0.1.0-linux-aarch64-appimage.AppImage" download>Linux ARM64 · AppImage</a>
+            <div class="format-links">
+              <a href="binaries/SessionsBox-v0.1.0-linux-arm64-deb.deb" download>DEB · ARM64</a>
+              <a href="binaries/SessionsBox-v0.1.0-linux-aarch64-rpm.rpm" download>RPM · ARM64</a>
+            </div>
+          </div>
+        </article>
+      </div>
+      <div class="install-notes">
+        <h3>A note about first-launch warnings</h3>
+        <p>SessionsBox ships without a paid signing certificate or Apple notarization. macOS and Windows may show an unidentified developer or unrecognized app prompt. <strong>The missing-signature prompt itself is harmless; there is no need to worry about that prompt alone.</strong> It reports missing developer verification, not a detected threat. Download from this page and approve the app only if you trust the source.</p>
+        <div class="install-grid">
+          <div>
+            <h4>macOS: developer cannot be verified</h4>
+            <p>Open the DMG and drag Sessions Box into Applications. Try opening it once. If macOS blocks it because the developer is unverified, go to <strong>System Settings → Privacy &amp; Security → Open Anyway</strong>, then confirm Open.</p>
+            <a href="https://support.apple.com/en-us/102445" target="_blank" rel="noopener">Apple’s instructions for unsigned apps</a>
+          </div>
+          <div>
+            <h4>Windows: unrecognized app</h4>
+            <p>If SmartScreen shows an unrecognized-app prompt, choose <strong>More info → Run anyway</strong> when available. Windows may show “Unknown publisher” because the installer is unsigned. Managed devices or Smart App Control may prevent this override.</p>
+            <a href="https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation" target="_blank" rel="noopener">Microsoft’s explanation of SmartScreen</a>
+          </div>
+        </div>
+      </div>
+      <p class="linux-note">Linux AppImage: allow execution in your file manager, or use <code>chmod +x</code> with your downloaded AppImage filename, then open it.</p>
+    </section>
+
+    <section class="container section faq" aria-labelledby="faq-title">
+      <div class="faq-layout">
+        <div class="section-heading">
+          <p class="eyebrow">A few practical details</p>
+          <h2 id="faq-title">Before you install.</h2>
+        </div>
+        <div>
+          <details>
+            <summary>Does “sync” upload my conversations?</summary>
+            <p>No. Session sync reads your existing local agent history into SessionsBox’s local database. It does not upload your transcripts or modify the original agent files. Model pricing can also be fetched online.</p>
+          </details>
+          <details>
+            <summary>How do I get help?</summary>
+            <p>Contact us at <a href="mailto:hola@goodapps.store">hola@goodapps.store</a>.</p>
+          </details>
+          <details>
+            <summary>Can I resume every imported session?</summary>
+            <p>Resume uses the session’s native agent CLI and original workspace. The CLI and original session data must still be available. The app shows the exact command and any warnings before launch. Older Cline editor tasks resume from Cline’s History in their original editor.</p>
+          </details>
+          <details>
+            <summary>Can I take my data with me?</summary>
+            <p>Export a session, filtered results, or your entire library as Markdown or JSON. For a restorable copy, export a SQLite backup from the database manager, including your saved transcripts, bookmarks, and tags.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container footer-inner">
+      <a class="brand" href="#" aria-label="SessionsBox home">
+        <img src="assets/logo.svg" width="32" height="32" alt="">
+        <span>Sessions<span>Box</span></span>
+      </a>
+      <p>Built for developers who use coding agents.</p>
+      <div class="footer-links">
+        <a href="mailto:hola@goodapps.store">Contact</a>
+        <a href="#download">Download</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Both screenshots remain visible when JavaScript is unavailable.
+    const controls = document.querySelector('.view-controls');
+    const buttons = [...controls.querySelectorAll('[data-view]')];
+    const views = buttons.map(button => document.getElementById(button.dataset.view));
+
+    function showView(id) {
+      buttons.forEach(button => {
+        button.setAttribute('aria-pressed', String(button.dataset.view === id));
+      });
+      views.forEach(view => { view.hidden = view.id !== id; });
+    }
+
+    controls.hidden = false;
+    showView('cost-view');
+    buttons.forEach(button => {
+      button.addEventListener('click', () => showView(button.dataset.view));
+    });
+  </script>
+</body>
+</html>
