@@ -919,3 +919,8 @@ button:disabled{cursor:default}
 .sync-options-button:hover{background:#ffffff0a}
 .sync-options-button:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
 :is(.sync-menu,.sync-tab-panel)>button:disabled{opacity:.45;cursor:default}
+
+/* Publisher contact below the sidebar logo, within the existing header height. */
+.sidebar-brand{height:70px;flex:0 0 70px;display:flex;flex-direction:column;justify-content:center;gap:5px;padding:0 17px;border-bottom:1px solid var(--line)}
+.sidebar-brand .brand-row{height:auto;padding:0;border:0;flex-shrink:0}
+.sidebar-publisher{color:var(--muted);font-size:10px;font-weight:400;white-space:nowrap}

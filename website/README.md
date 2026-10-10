@@ -77,7 +77,7 @@ the installation flow; updater metadata and signatures are not downloads here.
 
 ## Support copy
 
-For help, contact <hola@goodapps.store>.
+For help, contact <hello@goodapps.store>.
 
 macOS and Windows installation notes explain unsigned/unnotarized release
 prompts and link to official platform guidance. They distinguish the expected

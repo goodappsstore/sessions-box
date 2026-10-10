@@ -471,7 +471,7 @@ function App(){
   return <div className="app-shell" data-theme={theme}>
     {dataManagementOpen&&<DataManagement onClose={()=>setDataManagementOpen(false)} onChanged={refreshManagedData} syncRunning={sync.running||syncStarting}/>}
     <aside className={`sidebar ${mobileNav?'sidebar-open':''}`}>
-      <div className="brand-row"><div className="brand-mark"><Layers3 size={17}/></div><span>sessions<span className="brand-muted">box</span></span><button className="icon-button sidebar-mobile-close" onClick={()=>setMobileNav(false)}><X size={17}/></button></div>
+      <div className="sidebar-brand"><div className="brand-row"><div className="brand-mark"><Layers3 size={17}/></div><span>sessions<span className="brand-muted">box</span></span><button className="icon-button sidebar-mobile-close" onClick={()=>setMobileNav(false)}><X size={17}/></button></div><span className="sidebar-publisher">GoodApps (hello@goodapps.store)</span></div>
       <div className="sidebar-scroll">
         <div className="nav-section agent-section"><div className="section-heading"><div className="section-label">AGENTS</div></div>
           <button className={`nav-item agent-nav ${view==='sessions'&&!agentFilter&&!projectFilter?'nav-active':''}`} onClick={()=>{navigate({view:'sessions',selectionExplicit:false});setAgentFilter('');setProjectFilter('');}}><span className="agent-mark gray"><Layers3 size={11}/></span><span>All</span><span className="nav-count">{metadataState.stats==='ready'?stats.sessions.toLocaleString():'—'}</span></button>
@@ -487,7 +487,6 @@ function App(){
           {matchingProjects.length>9&&!workspaceQuery&&<button className="nav-item show-more" onClick={()=>setAllWorkspaces(!allWorkspaces)}>{allWorkspaces?'Show fewer workspaces':'Show all workspaces'} <ArrowRight size={13}/></button>}
         </div>
       </div>
-      <div className="sidebar-footer"><a href="mailto:hola@goodapps.store">hola@goodapps.store</a></div>
     </aside>
 
     <main className="main-panel">

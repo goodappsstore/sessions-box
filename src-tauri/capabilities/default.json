@@ -11,10 +11,6 @@
     "core:window:allow-toggle-maximize",
     "core:window:allow-start-dragging",
     "dialog:allow-open",
-    "dialog:allow-save",
-    {
-      "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "mailto:hola@goodapps.store" }]
-    }
+    "dialog:allow-save"
   ]
 }
