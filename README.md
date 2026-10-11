@@ -1,7 +1,6 @@
 # Sessions Box (`agent-sessions`)
 
-A local-first home for your coding agent sessions — Rust + Tauri v2 desktop app
-(ported from the Node `agent-sessions-box` prototype).
+Find the session. Pick up where you left off. A searchable desktop home for your coding-agent history — transcripts, tool activity, token costs — all on your machine.
 
 ## Repository navigation
 
