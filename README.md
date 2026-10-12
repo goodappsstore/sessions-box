@@ -2,6 +2,20 @@
 
 Find the session. Pick up where you left off. A searchable desktop home for your coding-agent history — transcripts, tool activity, token costs — all on your machine.
 
+## Screenshots
+
+### Sessions homepage
+
+![Sessions Box homepage](screenshots/sessions-homepage.png)
+
+### Token and cost tracking
+
+![Token and cost tracking](screenshots/token-cost-tracking.png)
+
+### Tool failures and execution
+
+![Tool failures and execution](screenshots/tool-failure-execution.png)
+
 ## Repository navigation
 
 - `src/`: React JavaScript/JSX frontend, shared components, and styles.
