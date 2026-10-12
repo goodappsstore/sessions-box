@@ -345,6 +345,10 @@ Open **Analytics** for token, cost, tool, and productivity reports with date,
 agent, workspace, and model filters. Reports cache for ten seconds; imports,
 cost recalculation, and manual refresh invalidate that cache.
 
+## AI Assistance
+
+Heavy AI assistance used. Not vibe-coded.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
