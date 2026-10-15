@@ -247,7 +247,6 @@ jobs:
           {
             echo "### Sessions Box ${RELEASE_TAG} published"
             echo "Source commit: ${SOURCE_SHA}"
-            echo 'All six native builds succeeded and all twelve website installers are present.'
+            echo 'All six native builds succeeded and all twelve installers are present.'
             echo "Release: ${release_url}"
-            echo 'Website deployment and copying installers into website/binaries remain separate actions.'
           } >> "$GITHUB_STEP_SUMMARY"

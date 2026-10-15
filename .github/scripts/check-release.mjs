@@ -34,7 +34,7 @@ if (tag !== undefined) {
   requireCondition(tag === `v${version}`, `Release tag must be v${version}.`);
 }
 
-// Per-bundle architecture names follow tauri-action and the website contract.
+// Per-bundle architecture names follow the tauri-action release asset pattern.
 const suffixes = [
   'darwin-aarch64-dmg.dmg',
   'darwin-x64-dmg.dmg',
@@ -50,14 +50,6 @@ const suffixes = [
   'linux-aarch64-rpm.rpm',
 ];
 const expectedNames = suffixes.map((suffix) => `SessionsBox-v${version}-${suffix}`);
-const linkedNames = [...read('website/index.html').matchAll(/href="binaries\/([^"/]+)"/g)]
-  .map((match) => match[1]);
-requireCondition(
-  linkedNames.length === expectedNames.length &&
-    new Set(linkedNames).size === expectedNames.length &&
-    expectedNames.every((name) => linkedNames.includes(name)),
-  `Website must link all twelve installers for v${version} with the release filenames.`,
-);
 
 if (assetsPath) {
   // gh api --paginate --slurp produces an array of pages.
@@ -72,4 +64,4 @@ if (assetsPath) {
   console.log('All twelve release installers are uploaded and nonempty.');
 }
 
-console.log(`Release metadata and twelve website filenames match v${version}.`);
+console.log(`Release metadata matches v${version}.`);

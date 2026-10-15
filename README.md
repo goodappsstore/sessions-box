@@ -21,7 +21,6 @@ Find the session. Pick up where you left off. A searchable desktop home for your
 - `src/`: React JavaScript/JSX frontend, shared components, and styles.
 - `src-tauri/src/`: Rust application shell, IPC commands, storage, import/sync,
   analytics, pricing, saved-data management, and terminal resume.
-- `website/`: independent static product website and installer destinations.
 
 ## Prerequisites
 
@@ -65,8 +64,7 @@ Before tagging a release:
 
 1. Set the same version in `package.json`, `package-lock.json` (including its
    root package), `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`; refresh
-   `src-tauri/Cargo.lock` for the crate version. Update the twelve links in
-   `website/index.html` and the filename/version documentation together.
+   `src-tauri/Cargo.lock` for the crate version.
 2. Run `node .github/scripts/check-release.mjs v0.1.0` (substitute the intended
    version) and the local build/check commands, then review the changes.
 3. Commit and push the version tag when ready to run the GitHub workflow.
@@ -76,35 +74,16 @@ and AppImage/DEB/RPM installers, and verifies all twelve expected files are
 uploaded and nonempty. Failed builds leave the draft unpublished for diagnosis
 and retry. Published releases cannot be rebuilt in place; use a new version.
 After all six builds and the installer verification succeed, the workflow
-**publishes the GitHub release automatically**. Website deployment and copying
-assets into `website/binaries/` are separate actions; this workflow does not
-deploy the landing page.
+**publishes the GitHub release automatically**.
 
 GitHub supplies the repository-scoped `GITHUB_TOKEN`; no additional release secret
 is required. Repository access defaults to
 read-only; draft creation, installer uploads, and publication jobs request
 `contents: write`.
 macOS uses ad-hoc signing, as in Serverbox; these builds are not notarized.
-Windows installers are unsigned. See [website installation and filename
-notes](website/README.md) before distribution.
+Windows installers are unsigned.
 
 ## Product details
-
-### Product website
-
-The **SessionsBox** landing page lives in [`website/index.html`](website/index.html).
-It is plain HTML with inline CSS and a small
-screenshot switcher; no installation or build step is required. Open it directly
-or serve `website/` with a static web server. It uses the project's logo, app
-light-theme colors, and supplied screenshots.
-
-Place installers in `website/binaries/` using the filenames documented in
-[`website/README.md`](website/README.md). Links cover macOS DMGs, Windows EXE/MSI,
-and Linux AppImage/DEB/RPM for Intel/AMD and ARM64. The architecture matrix and
-versioned filenames follow this repository's six-target release workflow
-(see [`.github/workflows/release.yml`](.github/workflows/release.yml)),
-adapted to the SessionsBox name and current app version. The page includes
-unsigned-app installation notes.
 
 ### Desktop app
 
