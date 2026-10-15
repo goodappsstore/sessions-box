@@ -1132,6 +1132,9 @@ fn build_plan(row: &SessionRow) -> Result<ResumePlan, String> {
                 if !root.is_empty() && root != def {
                     env.insert("XDG_DATA_HOME".into(), root.into());
                 }
+            } else if source_file.extension().and_then(|e| e.to_str()) == Some("db") {
+                // A custom `OPENCODE_DB` store: pin the exact database file.
+                env.insert("OPENCODE_DB".into(), normalized_slashes(&source_file));
             }
         }
         "cline" => {

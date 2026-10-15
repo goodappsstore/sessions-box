@@ -247,7 +247,7 @@ fn all_sources() -> Vec<Source> {
 fn source_present(src: &Source) -> bool {
     match src.kind {
         SourceKind::Jsonl => src.root.join(src.sub).is_dir(),
-        SourceKind::OpenCodeDb => src.root.join("opencode.db").is_file(),
+        SourceKind::OpenCodeDb => opencode_db_path(&src.root).is_file(),
         SourceKind::Hermes => src.root.is_dir(),
         SourceKind::Antigravity => src.root.join("brain").is_dir(),
         SourceKind::Cline => src.root.is_dir(),
@@ -269,6 +269,28 @@ pub fn get_available_agents() -> Vec<AvailableAgent> {
         });
     }
     out
+}
+
+/// OpenCode's database file under its data directory. OpenCode 2 honors an
+/// `OPENCODE_DB` override (absolute paths as-is, other values relative to the
+/// data directory); use the override's file when it exists and otherwise fall
+/// back to the default `opencode.db`.
+fn opencode_db_path(data_dir: &Path) -> PathBuf {
+    if let Ok(value) = std::env::var("OPENCODE_DB") {
+        let value = value.trim();
+        if !value.is_empty() && value != ":memory:" {
+            let candidate = PathBuf::from(value);
+            let candidate = if candidate.is_absolute() {
+                candidate
+            } else {
+                data_dir.join(candidate)
+            };
+            if candidate.is_file() {
+                return candidate;
+            }
+        }
+    }
+    data_dir.join("opencode.db")
 }
 
 fn walk_jsonl(dir: &Path, acc: &mut Vec<PathBuf>) {
@@ -313,7 +335,7 @@ pub fn discover_source_files(family: &str) -> Vec<PathBuf> {
             SourceKind::Cline => cline::discover(&src.root, &mut out),
             SourceKind::Jsonl => walk_jsonl(&src.root.join(src.sub), &mut out),
             SourceKind::OpenCodeDb => {
-                let f = src.root.join("opencode.db");
+                let f = opencode_db_path(&src.root);
                 if f.is_file() {
                     out.push(f);
                 }
@@ -1387,15 +1409,33 @@ fn is_database_file(path: &Path) -> bool {
 /// single unit and the import itself reports the error).
 fn count_db_sessions(family: &str, file: &Path) -> Option<usize> {
     // Table names are fixed by the adapters, never supplied by a source row.
-    let table = match family {
-        "opencode" => "session",
-        "hermes" => "sessions",
-        _ => return None,
-    };
     let conn =
         Connection::open_with_flags(file, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
     conn.busy_timeout(std::time::Duration::from_secs(5)).ok()?;
-    let sql = format!("SELECT COUNT(*) FROM {table}");
+    let has_table = |name: &str| -> bool {
+        conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
+            [name],
+            |row| row.get::<_, i64>(0),
+        )
+        .ok()
+        .is_some_and(|n| n != 0)
+    };
+    let sql = match family {
+        // Sessions may live in either layout beside an in-place migration; the
+        // union counts each session once.
+        "opencode" => match (has_table("session_v2"), has_table("session")) {
+            (true, true) => {
+                "SELECT COUNT(*) FROM (SELECT id FROM session UNION SELECT id FROM session_v2)"
+                    .to_string()
+            }
+            (true, false) => "SELECT COUNT(*) FROM session_v2".to_string(),
+            (false, true) => "SELECT COUNT(*) FROM session".to_string(),
+            (false, false) => return None,
+        },
+        "hermes" => "SELECT COUNT(*) FROM sessions".to_string(),
+        _ => return None,
+    };
     conn.query_row(&sql, [], |row| row.get::<_, i64>(0))
         .ok()
         .and_then(|n| usize::try_from(n).ok())

@@ -4,7 +4,7 @@ use super::{first_str, iso_time, normalize_record, stop_requested, NormalizedRec
 use rusqlite::{params, types::ValueRef, Connection, OpenFlags, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,6 +59,31 @@ fn value_text(v: &Value) -> String {
     v.as_str()
         .map(str::to_owned)
         .unwrap_or_else(|| v.to_string())
+}
+
+/// Render a tool output block list (`[{type:"text",text:...}]`) to text.
+/// OpenCode v2 stores what a tool printed this way where 1.x used the plain
+/// string `state.output`.
+fn tool_output_blocks(value: &Value) -> Option<String> {
+    match value {
+        Value::String(s) => Some(s.clone()),
+        Value::Array(items) => {
+            let texts = items
+                .iter()
+                .filter_map(|item| {
+                    item.get("text")
+                        .or_else(|| item.get("content"))
+                        .and_then(Value::as_str)
+                })
+                .collect::<Vec<_>>();
+            if texts.is_empty() {
+                None
+            } else {
+                Some(texts.join("\n"))
+            }
+        }
+        _ => None,
+    }
 }
 
 fn arguments(v: Option<&Value>) -> Value {
@@ -176,6 +201,8 @@ fn tool_call(value: &Value) -> Option<ToolCall> {
         .or_else(|| state.get("exitCode"))
         .or_else(|| state["metadata"].get("exitCode"))
         .or_else(|| state["metadata"].get("exit_code"))
+        // OpenCode stores the process exit status under `metadata.exit`.
+        .or_else(|| state["metadata"].get("exit"))
         .and_then(Value::as_i64);
     let error = state
         .get("is_error")
@@ -184,12 +211,15 @@ fn tool_call(value: &Value) -> Option<ToolCall> {
         .unwrap_or(false)
         || state.get("error").is_some_and(has_error)
         || exit_code.is_some_and(|code| code != 0);
+    // OpenCode v2 moved a tool's printed output from the string `state.output`
+    // to the block list `state.content`; prefer real output over error text.
     let result = state
         .get("output")
         .or_else(|| state.get("aggregated_output"))
-        .or_else(|| state.get("error"))
         .filter(|v| !v.is_null())
-        .map(value_text);
+        .map(value_text)
+        .or_else(|| state.get("content").and_then(tool_output_blocks))
+        .or_else(|| state.get("error").filter(|v| !v.is_null()).map(value_text));
     Some(ToolCall {
         call_id: first_str(value, &["call_id", "callId", "callID", "toolCallId", "id"]),
         name,
@@ -868,18 +898,33 @@ fn session_fresh(
     family: &str,
     session: &Value,
     id: &str,
+    turn_source: OpenCodeTurnSource,
 ) -> Result<bool, String> {
-    let count: i64 = snapshot
-        .query_row(
-            if family == "opencode" {
-                "SELECT COUNT(*) FROM message WHERE session_id=?"
-            } else {
-                "SELECT COUNT(*) FROM messages WHERE session_id=?"
-            },
-            [id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
+    let count: i64 = if family == "opencode" {
+        match turn_source {
+            OpenCodeTurnSource::V2 => snapshot
+                .query_row(
+                    &format!(
+                        "SELECT COUNT(*) FROM session_message WHERE session_id=?1 AND type IN {OPENCODE_V2_TURN_TYPES}"
+                    ),
+                    [id],
+                    |row| row.get(0),
+                )
+                .map_err(|e| e.to_string())?,
+            OpenCodeTurnSource::Legacy => snapshot
+                .query_row("SELECT COUNT(*) FROM message WHERE session_id=?", [id], |row| {
+                    row.get(0)
+                })
+                .map_err(|e| e.to_string())?,
+            OpenCodeTurnSource::Empty => 0,
+        }
+    } else {
+        snapshot
+            .query_row("SELECT COUNT(*) FROM messages WHERE session_id=?", [id], |row| {
+                row.get(0)
+            })
+            .map_err(|e| e.to_string())?
+    };
     let stamp = if family == "opencode" {
         session
             .get("time_updated")
@@ -931,49 +976,71 @@ pub(super) fn import_database(
         .map_err(|e| e.to_string())?;
     // A read transaction reads a consistent set of session/message/part rows.
     let snapshot = source.transaction().map_err(|e| e.to_string())?;
-    let sessions = rows(
-        &snapshot,
-        if family == "opencode" {
-            "SELECT * FROM session ORDER BY time_created,id"
-        } else {
-            "SELECT * FROM sessions ORDER BY started_at,id"
-        },
-        None,
-    )?;
+    let layout = if family == "opencode" {
+        OpenCodeLayout::detect(&snapshot)?
+    } else {
+        OpenCodeLayout::default()
+    };
+    let sessions: Vec<(String, Value)> = if family == "opencode" {
+        opencode_sessions(&snapshot, &layout)?
+    } else {
+        rows(&snapshot, "SELECT * FROM sessions ORDER BY started_at,id", None)?
+            .into_iter()
+            .map(|row| source_id(&row).map(|id| (id, row)))
+            .collect::<Result<Vec<_>, String>>()?
+    };
     let mut total = 0;
     let mut batch = Vec::new();
     let mut batch_records = 0;
     let mut batch_start = std::time::Instant::now();
-    for session in sessions {
+    for (id, session) in sessions {
         if stop_requested() {
             return Err("Import stopped".into());
         }
-        let id = source_id(&session)?;
-        if !force && session_fresh(&snapshot, dest, uri, family, &session, &id)? {
+        let turn_source = if family == "opencode" {
+            opencode_turn_source(&snapshot, &layout, &id)?
+        } else {
+            OpenCodeTurnSource::Empty
+        };
+        if !force && session_fresh(&snapshot, dest, uri, family, &session, &id, turn_source)? {
             if let Some(report) = on_session.as_deref_mut() {
                 report(0);
             }
             continue;
         }
-        let messages = rows(&snapshot, if family == "opencode" {
-            "SELECT * FROM message WHERE session_id=? ORDER BY time_created,id"
-        } else {
-            "SELECT * FROM messages WHERE session_id=? ORDER BY id"
-        }, Some(&id))?;
-        let parts = if family == "opencode" {
-            rows(&snapshot,
-                "SELECT p.* FROM part p JOIN message m ON m.id=p.message_id
-                 WHERE m.session_id=? ORDER BY p.time_created,p.id", Some(&id))?
-        } else { Vec::new() };
-        let data = if family == "opencode" {
-            let mut by_message: HashMap<String, Vec<Value>> = HashMap::new();
-            for part in parts {
-                let message_id = first_str(&part, &["message_id"]).ok_or("Invalid OpenCode part message ID")?;
-                by_message.entry(message_id).or_default().push(part);
-            }
-            opencode_session(uri, session, &id, messages, by_message)?
-        } else {
+        let data = if family != "opencode" {
+            let messages = rows(&snapshot, "SELECT * FROM messages WHERE session_id=? ORDER BY id", Some(&id))?;
             hermes_session(uri, session, &id, messages)?
+        } else {
+            match turn_source {
+                OpenCodeTurnSource::V2 => {
+                    let turns = rows(
+                        &snapshot,
+                        &format!(
+                            "SELECT * FROM session_message WHERE session_id=?1 AND type IN {OPENCODE_V2_TURN_TYPES} ORDER BY seq,id"
+                        ),
+                        Some(&id),
+                    )?;
+                    opencode_session_v2(uri, session, &id, turns)?
+                }
+                OpenCodeTurnSource::Legacy => {
+                    let messages = rows(&snapshot, "SELECT * FROM message WHERE session_id=? ORDER BY time_created,id", Some(&id))?;
+                    let parts = if layout.legacy_parts {
+                        rows(&snapshot,
+                            "SELECT p.* FROM part p JOIN message m ON m.id=p.message_id
+                             WHERE m.session_id=? ORDER BY p.time_created,p.id", Some(&id))?
+                    } else {
+                        Vec::new()
+                    };
+                    let mut by_message: HashMap<String, Vec<Value>> = HashMap::new();
+                    for part in parts {
+                        let message_id = first_str(&part, &["message_id"]).ok_or("Invalid OpenCode part message ID")?;
+                        by_message.entry(message_id).or_default().push(part);
+                    }
+                    opencode_session(uri, session, &id, messages, by_message)?
+                }
+                OpenCodeTurnSource::Empty => opencode_session_v2(uri, session, &id, Vec::new())?,
+            }
         };
         batch_records += data.records.len();
         batch.push(data);
@@ -1029,12 +1096,137 @@ fn seconds_time(value: &Value) -> Option<String> {
     }
 }
 
-fn opencode_session(
+// ---------------------------------------------------------------------------
+// OpenCode storage layouts
+//
+// 1.x stores sessions in `session` and turns in `message` + `part` rows.
+// 2.0 moved sessions to `session_v2` and turns to one `session_message` row
+// per turn (role in `type`, everything else inside `data`). A store upgraded
+// in place keeps both layouts; the v2 copy is authoritative once the in-place
+// migration has reached a session, so each session reads from exactly one
+// layout and is imported once.
+// ---------------------------------------------------------------------------
+
+/// Message types imported from the v2 `session_message` table. OpenCode also
+/// records turn plumbing there (`idle`, `model-switched`, `system`, ...);
+/// only conversation turns and compaction digests become transcript entries.
+const OPENCODE_V2_TURN_TYPES: &str = "('user','assistant','compaction')";
+
+#[derive(Debug, Clone, Copy, Default)]
+struct OpenCodeLayout {
+    v2_sessions: bool,
+    v2_messages: bool,
+    legacy_sessions: bool,
+    legacy_messages: bool,
+    legacy_parts: bool,
+}
+
+impl OpenCodeLayout {
+    fn detect(snapshot: &rusqlite::Transaction<'_>) -> Result<Self, String> {
+        let mut stmt = snapshot
+            .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+            .map_err(|e| format!("read source schema: {e}"))?;
+        let names = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        let has = |name: &str| names.iter().any(|n| n == name);
+        Ok(Self {
+            v2_sessions: has("session_v2"),
+            v2_messages: has("session_message"),
+            legacy_sessions: has("session"),
+            legacy_messages: has("message"),
+            legacy_parts: has("part"),
+        })
+    }
+}
+
+/// Source sessions from both layouts, deduplicated by ID. Timestamps are
+/// milliseconds in both layouts, so the merged order is deterministic.
+fn opencode_sessions(
+    snapshot: &rusqlite::Transaction<'_>,
+    layout: &OpenCodeLayout,
+) -> Result<Vec<(String, Value)>, String> {
+    let mut sessions: Vec<(String, Value)> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    if layout.v2_sessions {
+        for row in rows(
+            snapshot,
+            "SELECT * FROM session_v2 ORDER BY time_created,id",
+            None,
+        )? {
+            let id = source_id(&row)?;
+            if seen.insert(id.clone()) {
+                sessions.push((id, row));
+            }
+        }
+    }
+    if layout.legacy_sessions {
+        for row in rows(
+            snapshot,
+            "SELECT * FROM session ORDER BY time_created,id",
+            None,
+        )? {
+            let id = source_id(&row)?;
+            if seen.insert(id.clone()) {
+                sessions.push((id, row));
+            }
+        }
+    }
+    sessions.sort_by(|a, b| {
+        let key = |v: &Value| {
+            v.get("time_created")
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0)
+        };
+        key(&a.1).total_cmp(&key(&b.1)).then_with(|| a.0.cmp(&b.0))
+    });
+    Ok(sessions)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum OpenCodeTurnSource {
+    V2,
+    Legacy,
+    Empty,
+}
+
+/// Where one session's turns live: the v2 `session_message` copy once it has
+/// imported turns, otherwise the legacy `message`/`part` rows. Legacy rows
+/// left beside a migrated v2 copy are stale and must not be read twice.
+fn opencode_turn_source(
+    snapshot: &rusqlite::Transaction<'_>,
+    layout: &OpenCodeLayout,
+    id: &str,
+) -> Result<OpenCodeTurnSource, String> {
+    if layout.v2_messages {
+        let count: i64 = snapshot
+            .query_row(
+                &format!(
+                    "SELECT COUNT(*) FROM session_message WHERE session_id=?1 AND type IN {OPENCODE_V2_TURN_TYPES}"
+                ),
+                [id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if count > 0 {
+            return Ok(OpenCodeTurnSource::V2);
+        }
+    }
+    if layout.legacy_messages {
+        return Ok(OpenCodeTurnSource::Legacy);
+    }
+    Ok(OpenCodeTurnSource::Empty)
+}
+
+/// Shared tail: normalize pre-shaped message entries and derive session
+/// metadata, usage, and timestamps for either OpenCode layout.
+fn opencode_session_entries(
     uri: &str,
     mut metadata: Value,
     id: &str,
-    messages: Vec<Value>,
-    mut parts: HashMap<String, Vec<Value>>,
+    entries: Vec<(Value, Value)>,
 ) -> Result<SessionData, String> {
     if let Some(raw_model) = metadata["model"].as_str() {
         if let Ok(model) = serde_json::from_str::<Value>(raw_model) {
@@ -1043,47 +1235,13 @@ fn opencode_session(
             }
         }
     }
-    let mut records = Vec::with_capacity(messages.len());
+    let mut records = Vec::with_capacity(entries.len());
     let mut usage_values = Vec::new();
-    for message in &messages {
-        let message_id = source_id(message)?;
-        let data = source_json(message, "data", Value::Null)?;
-        if !data.is_object() {
-            return Err("OpenCode message data must be an object".into());
-        }
-        let raw_parts = parts.remove(&message_id).unwrap_or_default();
-        let mut content = Vec::new();
-        for part in &raw_parts {
-            let data = source_json(part, "data", Value::Null)?;
-            if !data.is_object() {
-                return Err("OpenCode part data must be an object".into());
-            }
-            content.push(data);
-        }
-        let mut normalized = data.clone();
-        normalized["id"] = json!(message_id);
-        normalized["type"] = json!("message");
-        let timestamp = data["time"]
-            .get("created")
-            .cloned()
-            .unwrap_or_else(|| message["time_created"].clone());
-        normalized["timestamp"] = milliseconds_time(&timestamp)
-            .map(Value::String)
-            .unwrap_or(Value::Null);
-        normalized["parent_id"] = data.get("parentID").cloned().unwrap_or(Value::Null);
-        normalized["model"] = data
-            .get("model")
-            .or_else(|| data.get("modelID"))
-            .cloned()
-            .unwrap_or_else(|| metadata["model"].clone());
-        normalized["provider"] = data.get("providerID").cloned().unwrap_or(Value::Null);
-        normalized["content"] = json!(content);
-        normalized["cwd"] = metadata.get("directory").cloned().unwrap_or(Value::Null);
+    for (normalized, payload) in entries {
         let mut record = normalize_record("opencode", &normalized, records.len() as i64)
             .ok_or("Invalid OpenCode message")?;
-        record.payload = json!({"message": message, "parts": raw_parts});
+        record.payload = payload;
         records.push(record);
-        normalized["id"] = json!(message_id);
         usage_values.push(normalized);
     }
     metadata["cwd"] = metadata.get("directory").cloned().unwrap_or(Value::Null);
@@ -1127,6 +1285,122 @@ fn opencode_session(
         mtime,
         records,
     })
+}
+
+/// Legacy layout: one `message` row per turn with `part` rows carrying the
+/// content, model, and tool state.
+fn opencode_session(
+    uri: &str,
+    metadata: Value,
+    id: &str,
+    messages: Vec<Value>,
+    mut parts: HashMap<String, Vec<Value>>,
+) -> Result<SessionData, String> {
+    let mut entries = Vec::with_capacity(messages.len());
+    for message in &messages {
+        let message_id = source_id(message)?;
+        let data = source_json(message, "data", Value::Null)?;
+        if !data.is_object() {
+            return Err("OpenCode message data must be an object".into());
+        }
+        let raw_parts = parts.remove(&message_id).unwrap_or_default();
+        let mut content = Vec::new();
+        for part in &raw_parts {
+            let data = source_json(part, "data", Value::Null)?;
+            if !data.is_object() {
+                return Err("OpenCode part data must be an object".into());
+            }
+            content.push(data);
+        }
+        let mut normalized = data.clone();
+        normalized["id"] = json!(message_id);
+        normalized["type"] = json!("message");
+        let timestamp = data["time"]
+            .get("created")
+            .cloned()
+            .unwrap_or_else(|| message["time_created"].clone());
+        normalized["timestamp"] = milliseconds_time(&timestamp)
+            .map(Value::String)
+            .unwrap_or(Value::Null);
+        normalized["parent_id"] = data.get("parentID").cloned().unwrap_or(Value::Null);
+        normalized["model"] = data
+            .get("model")
+            .or_else(|| data.get("modelID"))
+            .cloned()
+            .unwrap_or_else(|| metadata["model"].clone());
+        normalized["provider"] = data.get("providerID").cloned().unwrap_or(Value::Null);
+        normalized["content"] = json!(content);
+        normalized["cwd"] = metadata.get("directory").cloned().unwrap_or(Value::Null);
+        let payload = json!({"message": message, "parts": raw_parts});
+        entries.push((normalized, payload));
+    }
+    opencode_session_entries(uri, metadata, id, entries)
+}
+
+/// v2 layout: `session_message` keeps the role in its `type` column and the
+/// turn timestamp in `time`; the user's text and the assistant's parts are
+/// inside the `data` JSON.
+fn opencode_session_v2(
+    uri: &str,
+    metadata: Value,
+    id: &str,
+    turns: Vec<Value>,
+) -> Result<SessionData, String> {
+    let mut entries = Vec::with_capacity(turns.len());
+    for turn in &turns {
+        let turn_id = source_id(turn)?;
+        let turn_type = first_str(turn, &["type"]).unwrap_or_default();
+        let data = source_json(turn, "data", Value::Null)?;
+        if !data.is_object() {
+            return Err("OpenCode message data must be an object".into());
+        }
+        let content = match turn_type.as_str() {
+            "user" => match data.get("text").and_then(Value::as_str) {
+                Some(text) if !text.is_empty() => json!([{"type": "text", "text": text}]),
+                _ => json!([]),
+            },
+            "compaction" => match data.get("summary").and_then(Value::as_str) {
+                Some(summary) if !summary.is_empty() => {
+                    json!([{"type": "text", "text": summary}])
+                }
+                _ => json!([]),
+            },
+            _ => data
+                .get("content")
+                .filter(|v| v.is_array())
+                .cloned()
+                .unwrap_or_else(|| json!([])),
+        };
+        let mut normalized = data.clone();
+        normalized["id"] = json!(turn_id);
+        normalized["type"] = json!(if turn_type == "compaction" {
+            "compaction"
+        } else {
+            "message"
+        });
+        normalized["role"] = json!(if turn_type == "user" { "user" } else { "assistant" });
+        let timestamp = data["time"]
+            .get("created")
+            .cloned()
+            .unwrap_or_else(|| turn["time_created"].clone());
+        normalized["timestamp"] = milliseconds_time(&timestamp)
+            .map(Value::String)
+            .unwrap_or(Value::Null);
+        normalized["parent_id"] = data.get("parentID").cloned().unwrap_or(Value::Null);
+        normalized["model"] = data
+            .get("model")
+            .cloned()
+            .unwrap_or_else(|| metadata["model"].clone());
+        normalized["provider"] = data
+            .get("provider")
+            .or_else(|| data.get("providerID"))
+            .cloned()
+            .unwrap_or(Value::Null);
+        normalized["content"] = content;
+        normalized["cwd"] = metadata.get("directory").cloned().unwrap_or(Value::Null);
+        entries.push((normalized, turn.clone()));
+    }
+    opencode_session_entries(uri, metadata, id, entries)
 }
 
 fn hermes_session(

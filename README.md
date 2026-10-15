@@ -148,6 +148,23 @@ its error instead of opening a dead terminal.
 Discovery uses the same augmented `PATH` as launch; Windows also recognizes
 npm `.cmd`/`.bat` shims. Copied Windows commands use PowerShell syntax.
 
+### OpenCode sources
+
+OpenCode supports session imports, transcript and tool browsing, filters,
+exports, token analytics, and resume. Both storage layouts are read: 1.x keeps
+sessions in `session` and turns in `message`/`part` rows; 2.0 keeps sessions in
+`session_v2` and turns in one `session_message` row per turn. Stores upgraded
+in place keep both layouts — each session is imported once, preferring the v2
+copy once the migration has reached it — so old, new, and migrated stores are
+all handled. Turn plumbing rows (`idle`, `model-switched`, …) are skipped;
+compaction digests remain searchable entries.
+
+The store defaults to `~/.local/share/opencode/opencode.db` on every platform
+(`XDG_DATA_HOME` relocates it). OpenCode 2's `OPENCODE_DB` override is honored
+as well: absolute paths are used as-is, relative paths resolve under the
+OpenCode data directory, and a missing override file falls back to the default
+store. Resume pins the original store and uses `opencode --session <id>`.
+
 ### Hermes Agent sources
 
 Hermes Agent is supported for session imports, transcript/tool browsing,
